@@ -1,0 +1,431 @@
+---
+title: Técnicas de procesamiento de datos para el análisis estadístico y para la construcción
+  de modelos
+author: "Javier de Golferichs"
+date: "2022-08-22"
+output:
+  pdf_document:
+    number_sections: true
+    fig_caption: yes
+#bibliography: references.bib  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Resumen
+
+Para estudiar la distribución de salarios en una base de datos de salarios de trabajadores en el área de ciencia de datos, se aplican técnicas estadísticas y de visualización de datos. Estas incluyen hacer transformaciones de BoxCox para suponer normalidad en los datos de los salarios por país, y aplicar un análisis de residuos a este mismo. También se hace un ANOVA para estudiar cual tipo de contrato es más conveniente, para después hacer un análisis de los intervalos de confianza. Se estudia también la modelidad de trabajo que ofrece mejor salario, también con un ANOVA y Dunnet.
+
+# Introduccion
+
+La ciencia de datos es un sector laboral que ha crecido en los últimos años. Con la llegada de la pandemia los trabajos en modalidades distintas a la presencial se han vuelto más comunes.
+
+En este estudio, se planea responder a las preguntas ¿En qué países se ofrecen mejores salarios?, ¿qué tipo de contrato (parcial, tiempo completo, etc) ofrece mejores salarios? ¿Qué tipo de contrato será el más conveniente? e ¿influye el nivel de experiencia en el tipo de contrato?
+
+Este estudio podrá ser utilizado por aspirantes a puestos en el área de ciencia de datos, para corroborar la competitividad del salario que les fue propuesto.
+
+Este estudio presenta visualización para la exploración de datos, y para análizar la relación de datos continuos con variables categóricas se hacen ANOVAs, para responder las 3 preguntas.
+
+# Análisis de los resultados
+
+La base de datos contiene 83 renglones y 12 variables. Los datos ya están discretizados y no contiene duplicados.
+
+```{r importar,import_data, echo=FALSE}
+M <- read.csv("ds_salaries.csv")
+#head(M)
+```
+
+
+```{r estadisticos_por_pais, echo=FALSE, warning=FALSE}
+media_pais <- tapply(M$salary_in_usd,
+           M$employee_residence,
+           mean)
+mediana_pais <- tapply(M$salary_in_usd,
+           M$employee_residence,
+           median)
+moda_pais <- tapply(M$salary_in_usd,
+           M$employee_residence,
+           mode)
+varianza_pais <- tapply(M$salary_in_usd,
+           M$employee_residence,
+           var)
+DE_pais <- tapply(M$salary_in_usd,
+             M$employee_residence,
+             sd)
+max_pais <- tapply(M$salary_in_usd,
+             M$employee_residence,
+             max)
+min_pais <- tapply(M$salary_in_usd,
+             M$employee_residence,
+             min)
+n_pais <- tapply(M$salary_in_usd, 
+           M$employee_residence,
+           length)
+```
+
+
+```{r estadisticos_muestra, echo=FALSE, warning=FALSE}
+media_muestra <- tapply(M$salary_in_usd,
+                        M$employee_residence,
+                        mean)
+mediana_muestra <- tapply(M$salary_in_usd,
+                          M$employee_residence,
+                          median)
+moda_muestra <- tapply(M$salary_in_usd,
+                       M$employee_residence,
+                       mode)
+varianza_muestra <- tapply(M$salary_in_usd,
+                           M$employee_residence,
+                           var)
+DE_muestra <- tapply(M$salary_in_usd,
+                     M$employee_residence,
+                     sd)
+max_muestra <- tapply(M$salary_in_usd,
+                      M$employee_residence,
+                      max)
+min_muestra <- tapply(M$salary_in_usd,
+                      M$employee_residence,
+                      min)
+n_muestra <- tapply(M$salary_in_usd, 
+                    M$employee_residence,
+                    length)
+ErrorEst_muestra <- abs(qnorm(0.025, n_muestra - 1))*(DE_muestra/sqrt(n_muestra))
+Inf_muestra <- media_muestra - ErrorEst_muestra
+Sup_muestra <- media_muestra + ErrorEst_muestra
+```
+
+## Salarios por país
+
+En la figura \ref{fig:salarios_por_pais}, se presentan diagramas de caja y bigote en donde se observa la existencia de datos atípicos, con respecto a la categoría de país y la media global.
+
+```{r echo=FALSE, warning=FALSE, fig.cap="\\label{fig:salarios_por_pais}Boxplots de salarios por país. Histograma de ", fig.align = 'center', out.width="50%"}
+
+par(mfrow=c(1,2))
+
+outliers <- boxplot(M$salary_in_usd ~ M$employee_residence, 
+                    col = 2:5, 
+                    horizontal = TRUE,
+                    main = "Boxplot de salarios por país",
+                    xlab = 'Salario en dolares',
+                    ylab = 'Pais')
+abline(v = mean(M$salary_in_usd), 
+       lty = 3, 
+       col = "red")
+
+hist(M$salary_in_usd,
+     col="lightblue",
+     main = "Hist. Frecuencia de salario en dolares",
+     xlab = 'Salario en dolares',
+     ylab = 'Frecuencia')
+grid(nx = NA, 
+     ny = NULL, 
+     lty = 2, 
+     col = "gray", 
+     lwd = 1)
+```
+
+De la figura \ref{fig:salarios_por_pais}, es interesante observar que el país que tiene más outliers es Estados Unidos (US). Es importante mencionar que no todos los países tienen la misma cantidad de datos en la muestra, puesto que el mínimo es `r min(n_muestra)` y el máximo `r max(n_muestra)`.
+
+De esto también se observa que los datos tienden a tener un sesgo a la derecha, lo cual se puede deber a los grandes datos atípicos.
+
+Esto se puede confirmar con un gráfico de QQplot.
+
+```{r qqplot_normalidad_salarios, echo=FALSE, warning=FALSE, fig.align = 'center', out.width="50%"}
+qqnorm(M$salary_in_usd)
+qqline(M$salary_in_usd,
+       col="red")
+```
+
+Dado que la figura muestra una tendencia hacia arriba de la línea `qqline`, se confirma la existencia de sesgo, por lo que se hace tratamiento de datos atípicos (aquellos que se representen como puntos en un gráfico de caja y bigote para la muestra general).
+
+
+```{r echo=FALSE, warning=FALSE,fig.cap="\\label{fig:boxplot_global_atipicos}Boxplots de salarios con datos atípicos.", fig.align = 'center', out.width="50%"}
+outliers <- boxplot(M$salary_in_usd, 
+                    col = 2:5, 
+                    horizontal = TRUE,
+                    main = "Boxplot de distribución de salarios",
+                    xlab = "Salarios en dolares",
+                    ylab = "Muestra")
+```
+
+
+```{r warning=FALSE, include=FALSE}
+
+q1_muestra <- quantile(M$salary_in_usd,
+                      0.25)
+q3_muestra <- quantile(M$salary_in_usd,
+                      0.75)
+ri_muestra <- IQR(M$salary_in_usd)
+filter(M$salary_in_usd,
+       M$salary_in_usd<q3_muestra+1.5*ri_muestra)
+X1 <- M$salary_in_usd
+```
+
+```{r echo=FALSE,,fig.cap="\\label{fig:boxplot_salarios_filtrado}Boxplots de salarios con filtrado de datos a 1.5 desviaciones estandar.", fig.align = 'center', out.width="50%"}
+boxplot(X1,
+        horizontal=TRUE,
+        ylim=c(0,q3_muestra+1.5*ri_muestra),
+        main = "Boxplot de distribución de salarios filtrado",
+        xlab = "Salarios en dolares",
+        ylab = "Muestra")
+abline(v=q3_muestra+1.5*ri_muestra,
+       col="red")
+```
+
+En la figura anterior se observa que se logro eliminar los datos atípicos. Para verificar normalidad se hace un gráfico de QQplot.
+
+```{r echo=FALSE, warning=FALSE, fig.align = 'center', out.width="50%"}
+qqnorm(X1)
+qqline(X1,
+       col="red")
+```
+
+Dado que el comportamiento sigue siendo similar al del QQplot anterior, se hace una transformación de BoxCox.
+
+```{r echo=FALSE, warning=FALSE, fig.align = 'center', out.width="50%"}
+library(MASS)
+bc<-boxcox((M$salary_in_usd)~1)
+l <- bc$x[which.max(bc$y)]
+```
+
+En la figura se observa el valor propuesto de $\lambda =$ `r l`.
+
+
+Se procede ahora a trazar los histogramas de la transformación.
+
+```{r trnsformacion, echo=FALSE, warning=FALSE,fig.cap="\\label{fig:transformacion}Transformación de BoxCox.", fig.align = 'center', out.width="50%"}
+hist1=sqrt(M$salary_in_usd+1)
+hist2=((M$salary_in_usd+1)^l-1)/l
+par(mfrow=c(3,1))
+hist(hist1,col=0,main="Histograma de $X+1$")
+hist(hist2,col=0,main="Histograma de $((X+1)^l-1)/l$")
+hist(M$salary_in_usd,col=0,main="Histograma de X")
+```
+De la figura \ref{fig:transformacion} se observa que la que más asemeja normalidad es la de arriba, por la que con esta se construye otro QQplot, para estudiar el efecto de la transformación aplicada.
+
+```{r echo=FALSE, warning=FALSE, fig.align = 'center', out.width="50%"}
+qqnorm(hist2)
+qqline(hist2,
+       col="red")
+```
+
+Siguiente a esto se aplica un ANOVA, para verificar el cambio de varianza dentro de las categorías de la muestra.
+
+```{r echo=FALSE, warning=FALSE}
+anova = aov(hist1~M$employee_residence)
+summary(anova)
+```
+
+```{r echo=FALSE, fig.align = 'center', out.width="50%"}
+qqnorm(anova$residuals)
+qqline(anova$residuals,
+       col="red")
+hist(anova$residuals,
+     col=0) # usaremos un histograma normal, normalmente nos conviene el de densidad
+```
+
+Tras estos análisis se observa que no sigue una distribución normal sin sesgo, por lo que se estima que el tercer momento es alto.
+
+Se revisa ahora la homocestacidad de esta, para verificar si la varianza se mantiene.
+
+```{r echo=FALSE, fig.align = 'center', out.width="50%"}
+plot(anova$fitted.values,
+     anova$residuals,
+     ylab="Residuos",
+     xlab = "Valores estimados")
+abline(h=0, 
+       col = "red")
+```
+
+En este caso se considera que la muestra no cumple con homocesdacidad puesto que en el rango cercano a 400 se observa que los datos atípicos si presentan un patrón definido.
+
+Se considera que el país que ofrece los mejores sueldos a los cientificos de datos es Estados Unidos, no únicamente por los datos atípicos, sino también porque su segundo cuartil supera al segundo cuartil de los demás países.
+
+## Análisis de salarios por tipo de contrato
+
+
+Para esta sección se busca analizar cual tipo de contrato ofrece mejores prestaciones salariales. Para esto se hará un ANOVA.
+
+En este caso, el anova depende de un solo factor, que es el tipo de contrato.
+
+```{r echo=FALSE}
+anova = aov(M$salary_in_usd ~ M$employment_type)
+summary(anova)
+```
+
+
+```{r echo=FALSE}
+media_contrato <- tapply(M$salary_in_usd,
+           M$employment_type,
+           mean)
+mediana_contrato <- tapply(M$salary_in_usd,
+           M$employment_type,
+           median)
+moda_contrato <- tapply(M$salary_in_usd,
+           M$employment_type,
+           mode)
+varianza_contratos <- tapply(M$salary_in_usd,
+           M$employment_type,
+           var)
+DE_contrato <- tapply(M$salary_in_usd,
+             M$employment_type,
+             sd)
+max_contrato <- tapply(M$salary_in_usd, 
+             M$employment_type,
+             max)
+min_contrato <- tapply(M$salary_in_usd,
+             M$employment_type,
+             min)
+n_contrato <- tapply(M$salary_in_usd, 
+           M$employment_type,
+           length)
+```
+
+
+```{r echo=FALSE, fig.align = 'center', out.width="50%"}
+boxplot(M$salary_in_usd ~ M$employment_type, 
+        col = 2:5, 
+        horizontal = TRUE)
+abline(v = mean(M$salary_in_usd), 
+       lty = 3, 
+       col = "red")
+```
+
+
+De la figura anterior, se considera que el mejor tipo de trabajo es CT, debido a que la media (Q2), es el más cercano a la media de la muestra general.
+
+Respecto a esto, se analizan las diferencias en las varianzas entre estas categorías.
+
+```{r echo = FALSE, include=FALSE}
+TukeyHSD(anova)
+```
+
+```{r echo=FALSE,fig.align = 'center', out.width="50%"}
+plot(TukeyHSD(anova))
+```
+
+Las diferencias entre los valores tienen menor diferencia para el caso de FT-CT, puesto que las medias son similares.
+
+Por esto es discutible cual de los dos es mejor, puesto que a su vez, FT también tiene una cantidad considerable de valores atípicos, por lo que se considera que estos dos son buenas opciones.
+
+Sin embargo, si se toman en cuenta las prestaciones y seguridad de empleo, puede que FT (tiempo completo) sea una mejor opción, a comparación de CT, que es contrato por proyecto.
+
+
+## Análisis por modalidad de formato (remoto, hibrido o presencial)
+
+
+Para este caso, sea 0 modalidad totalmente presencial, 50 híbrida y 100 totalmente remota.
+
+```{r echo=FALSE}
+M <- within(M, {   
+  remote_ratio.cat <- NA # need to initialize variable
+  remote_ratio.cat[remote_ratio == 0] <- "Presencial"
+  remote_ratio.cat[remote_ratio == 50] <- "Híbrido"
+  remote_ratio.cat[remote_ratio == 100] <- "Remoto"
+   } )
+```
+
+```{r echo=FALSE, include=FALSE}
+media_modalidad <- tapply(M$salary_in_usd,
+           M$employment_type,
+           mean)
+```
+
+
+```{r echo=FALSE, fig.align = 'center', out.width="50%"}
+outliers <- boxplot(M$salary_in_usd ~ M$remote_ratio, 
+                    col = 2:5, 
+                    horizontal = TRUE)
+abline(v = mean(M$salary_in_usd), 
+       lty = 3, 
+       col = "red")
+```
+
+Se observa que el Q2 de formato totalmente remota supera a la media global de la muestra, mientras que el formato presencial se acerca y el híbrido es el que su media es el más alejado.
+
+Para profundizar el análisis se realiza un ANOVA (de tres factores), de forma que se pueda explorar la diferencia entre las medias, tal que se usa el formato presencial como control, para así aplicar una prueba de Dunnet, que es más robusta que una prueba de Tukey, pues no supone una distribución normal y trata de conservar la significancia.
+
+```{r annova3, echo=FALSE, include=FALSE}
+anova = aov(M$salary_in_usd ~ M$remote_ratio)
+summary(anova)
+```
+
+```{r dunnet3, echo=FALSE, include=FALSE}
+library(DescTools)
+dun <- DunnettTest(x = M$salary_in_usd,
+            g = M$remote_ratio)
+dun
+# invervalos de confianza para los tres
+```
+
+Con los intervalos que devuelve el teorema de Dunnet, se puede hacer un análisis de los intervalos.
+
+```{r echo=FALSE, fig.align = 'center', out.width="50%"}
+plot(0, 
+     ylim=c(0,3),
+     xlim=c(-50000,50000), 
+     yaxt="n", 
+     ylab="",
+     xlab="Dolares",
+     main="Intervalos de prueba de Dunnet")
+axis(2,
+     at=c(1:2),
+     labels=c("0-100","0-50"))
+points(mean(c(-46075.966,-4987.218)), 
+       1, 
+       pch=19, 
+       cex=1.1,
+       col=1+2)
+
+arrows(-46075.966,
+       1,-4987.218,
+       1, angle=90, 
+       code=3, 
+       length = 0.1, 
+       lwd = 2,
+       col=1+2)
+
+points(mean(c(401.892,31803.77)), 
+       2, 
+       pch=19, 
+       cex=1.1,
+       col=2+2)
+
+arrows(401.892,
+       2,31803.77,
+       2, angle=90, 
+       code=3, 
+       length = 0.1, 
+       lwd = 2,
+       col=2+2)
+
+abline(v=0,
+       lty=3,col="red")
+```
+
+Con la prueba de Dunnet  se confirma que las diferencias entre las medias son más cercanas entre el formato remoto y presencial que con el formato híbrido.
+
+Con esto se interpreta que es más conveniente tener un formato presencial, seguido de remoto y seguido de híbrido.
+
+Se considera óptimo explorar como los diferentes tipos de modalidad se relacionan con el típo de contrato.
+
+# Conclusiones.
+
+Con este estudio, se logro evaluar la relación que tiene el tipo de contrato con el salario al que puede aspirar un científico de datos, y que el más conveniente es el de tiempo completo.
+
+Para el país en el que se esperan mejores salarios para ciencia de datos se tiene a Estados Unidos.
+
+Como formato mejor remunerado esta el formato presencial.
+
+De esto se interpreta que por el momento las nuevas tendencias de empleo (por proyecto e híbrido o remoto) aún no alcanzan por completo a las tradicionales (presencial y en tiempo completo), sin embargo se espera que esta tendencia lo alcance en unos años.
+
+# Anexos
+
+Ambos links contienen el mismo archivo. Se presentan los dos para facilitar y por preferencia de uso de interfaz.
+
+[GitHub](link)
+
+[Drive](link)
