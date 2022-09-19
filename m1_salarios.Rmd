@@ -426,6 +426,6 @@ De esto se interpreta que por el momento las nuevas tendencias de empleo (por pr
 
 Ambos links contienen el mismo archivo. Se presentan los dos para facilitar y por preferencia de uso de interfaz.
 
-[GitHub](link)
+[GitHub (oprima aqui)](https://github.com/1dgog/tc3006c_m1_portafoliodeanalisis/blob/main/m1_salarios.Rmd)
 
-[Drive](link)
+[Drive (oprima aqui)](https://drive.google.com/file/d/1YNl1LflD3Lk-cISN2cHycxOMa0TmZwrB/view?usp=sharing)
